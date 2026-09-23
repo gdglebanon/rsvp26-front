@@ -912,9 +912,9 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
                             <div className="badge-card">
                                 <div className="badge-name">{formData.firstName || 'Your'} {formData.lastName || 'Name'}</div>
                                 <div className="badge-role">
-                                    {formData.status === 'professional' ? 'Professional' :
-                                        formData.status === 'student' ? 'Student' :
-                                            formData.status === 'fresh_graduate' ? 'Fresh Graduate' : 'Attendee'}
+                                    {formData.specialization === 'Other in tech' ? 'Techie' :
+                                        formData.specialization === 'Other non-tech' ? 'non' :
+                                            formData.specialization || 'Your Specialization'}
                                 </div>
                                 <div className="badge-company">{formData.company || UNIVERSITIES.find(u => u.abbreviation === formData.university)?.full_name || searchTerm || 'Company / University'}</div>
                                 <div className="badge-footer">GDG Lebanon RSVP</div>
