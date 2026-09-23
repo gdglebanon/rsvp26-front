@@ -953,3 +953,15 @@
 .email-edit-row input { flex: 1; min-width: 180px; }
 .email-edit-row button, .verification-step > button { padding: 10px 16px; border: 1px solid #1967d2; border-radius: 8px; background: white; color: #174ea6; cursor: pointer; }
 .login-error { color: #b3261e; }
+
+.contact-fields { align-items: start; }
+.phone-reminder { display: flex; align-items: flex-start; gap: 7px; margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; background: #fff8ed; color: #96621b; font-size: 12px; line-height: 1.5; }
+.phone-reminder svg { flex-shrink: 0; margin-top: 2px; }
+.profile-link-preview { display: flex; align-items: center; gap: 10px; min-height: 54px; padding: 10px 14px; border: 1px solid #dadce0; border-radius: 12px; background: white; }
+.profile-link-preview a { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; color: #1967d2; text-decoration: none; }
+.profile-link-preview a:hover { text-decoration: underline; }
+.profile-link-preview a span { overflow-wrap: anywhere; }
+.profile-link-preview svg { flex-shrink: 0; }
+.profile-link-preview button { display: flex; align-items: center; justify-content: center; min-width: 36px; min-height: 36px; padding: 7px; background: transparent; border: 0; border-radius: 6px; color: #5f6368; cursor: pointer; }
+.profile-link-preview button:hover { background: #f1f3f4; }
+@media (max-width: 600px) { .contact-fields { grid-template-columns: 1fr; } }

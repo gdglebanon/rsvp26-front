@@ -18,6 +18,8 @@ import { EVENT_CONFIG } from './config'
 import { FormField } from './components/FormField'
 import { SearchableSelect } from './components/SearchableSelect'
 import './App.css'
+import ProfileUrlInput from './components/ProfileUrlInput'
+import { parseProfileUrl } from './lib/profileUrl'
 import { checkedEmail, request, saveRegistration } from './lib/registration'
 
 const UNIVERSITIES = [
@@ -403,7 +405,7 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
 
         if (!formData.linkedIn) {
             newErrors.linkedIn = 'LinkedIn or GitHub URL is required';
-        } else if (!/^https?:\/\/(www\.)?(linkedin\.com|github\.com)\/.*$/.test(formData.linkedIn)) {
+        } else if (!parseProfileUrl(formData.linkedIn)) {
             newErrors.linkedIn = 'Please provide a valid LinkedIn or GitHub URL';
         }
 
@@ -514,9 +516,9 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
         if (!currentData.firstName) tempErrors.firstName = 'First name is required';
         if (!currentData.lastName) tempErrors.lastName = 'Last name is required';
         if (!currentData.linkedIn) {
-            tempErrors.linkedIn = 'LinkedIn Link is required';
-        } else if (!/^https?:\/\/(www\.)?linkedin\.com\/.*$/.test(currentData.linkedIn)) {
-            tempErrors.linkedIn = 'Please provide a valid LinkedIn URL';
+            tempErrors.linkedIn = 'LinkedIn or GitHub URL is required';
+        } else if (!parseProfileUrl(currentData.linkedIn)) {
+            tempErrors.linkedIn = 'Please provide a valid LinkedIn or GitHub profile URL';
         }
         if (!currentData.region) tempErrors.region = 'Please select a region';
         if (currentData.activeExpCategories.length === 0) tempErrors.experience = 'Please select at least one experience category';
@@ -680,13 +682,13 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
                             </FormField>
                         </div>
 
-                        <div className="grid-2-always">
+                        <div className="grid-2-always contact-fields">
                             <FormField label="Phone Number" error={errors.phone}>
-                                <input type="tel" name="phone" placeholder="+961 XX XXX XXX" value={formData.phone} onChange={handleChange} onBlur={handleBlur} />
+                                <input type="tel" name="phone" placeholder="+961 XX XXX XXX" value={formData.phone} onChange={handleChange} onBlur={handleBlur} aria-describedby="phone-reminder" />
+                                <p id="phone-reminder" className="phone-reminder"><AlertTriangle size={15} aria-hidden="true" /><span>We’ll use this number for registration updates and coordination.</span></p>
                             </FormField>
-                            <p id="phone-reminder" className="phone-reminder">We will communicate with you through this number for registration updates and coordination.</p>
                             <FormField label="LinkedIn or GitHub URL" required error={errors.linkedIn}>
-                                <input type="url" name="linkedIn" placeholder="https://linkedin.com/in/... or https://github.com/..." value={formData.linkedIn} onChange={handleChange} onBlur={handleBlur} />
+                                <ProfileUrlInput value={formData.linkedIn} onChange={handleChange} onBlur={handleBlur} />
                             </FormField>
                         </div>
 
