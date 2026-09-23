@@ -8,8 +8,8 @@ export const EVENT_CONFIG = {
     // Set to true to forcibly close registration regardless of the date.
     forceCloseRegistration: false,
 
-    eventName: "GDG Lebanon RSVP",
-    eventDescription: "Join the GDG Lebanon community for an unforgettable experience."
+    eventName: "DevFest Lebanon 2026 — Be Part of It",
+    eventDescription: "A day of ideas, hands-on learning, and new connections. Join GDG Lebanon to explore technology and meet the people building what’s next."
 };
 
 export const isRegistrationOpen = () => {

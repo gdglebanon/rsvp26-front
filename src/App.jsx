@@ -13,15 +13,14 @@ import {
     Send,
     AlertTriangle
 } from 'lucide-react'
-import logo from './assets/logo.png'
+import DevFestLogo from './components/DevFestLogo'
 import { EVENT_CONFIG, isRegistrationOpen } from './config'
 import { FormField } from './components/FormField'
 import { SearchableSelect } from './components/SearchableSelect'
 import './App.css'
 import AttendeeLogin from './components/AttendeeLogin'
 import VerificationStep, { readPending, PENDING_KEY } from './components/VerificationStep'
-import { mapProfile } from './lib/profile'
-import { api } from './lib/firebase'
+import { api } from './lib/registration'
 
 const UNIVERSITIES = [
     {
@@ -440,7 +439,7 @@ const App = () => {
                     setIsSuccess(true);
                 } else {
                     const session = await api('pending', { email: formData.email, form: submitData });
-                    localStorage.setItem(PENDING_KEY, JSON.stringify(session));
+                    sessionStorage.setItem(PENDING_KEY, JSON.stringify(session));
                     setPending(session);
                 }
                 window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -583,7 +582,7 @@ const App = () => {
         return (
             <div className="app-container closed-container">
                 <div className="logo-container">
-                    <img src={logo} alt="GDG Lebanon Logo" className="logo" />
+                    <DevFestLogo />
                 </div>
                 <div className="closed-message">
                     <AlertTriangle size={48} className="warning-icon" />
@@ -598,7 +597,7 @@ const App = () => {
         return (
             <div className="app-container success-container">
                 <div className="logo-container">
-                    <img src={logo} alt="GDG Lebanon Logo" className="logo" />
+                    <DevFestLogo />
                 </div>
                 <motion.div
                     initial={{ opacity: 0, scale: 0.9 }}
@@ -606,8 +605,8 @@ const App = () => {
                     className="success-message"
                 >
                     <CheckCircle2 size={64} className="success-icon" />
-                    <h1>RSVP Submitted Successfully!</h1>
-                    <p>Thank you, {formData.firstName}. Your email is confirmed and your registration is complete. Please wait for our notice.</p>
+                    <h1>Demo RSVP Complete!</h1>
+                    <p>Thank you, {formData.firstName}. Your demo registration is saved in this browser session. No RSVP or email has been sent.</p>
                 </motion.div>
             </div>
         )
@@ -617,7 +616,7 @@ const App = () => {
         <div className="app-container">
             <header className="app-header">
                 <div className="logo-container">
-                    <img src={logo} alt="GDG Lebanon Logo" className="logo" />
+                    <DevFestLogo />
                 </div>
                 <div className="header-text">
                     <h1>{EVENT_CONFIG.eventName}</h1>
@@ -648,14 +647,15 @@ const App = () => {
                         <h2>Personal Information</h2>
 
                         <FormField label="Email" required error={errors.email}>
-                            <input type="email" name="email" placeholder="your.email@example.com" value={formData.email} onChange={handleChange} onBlur={handleBlur} />
+                            <input type="email" name="email" placeholder="your.email@example.com" aria-describedby="email-reminder" value={formData.email} onChange={handleChange} onBlur={handleBlur} />
+                            <p id="email-reminder" className="email-reminder">Please double-check your email address. You’ll be asked to verify it later to complete your registration.</p>
                         </FormField>
 
                         <AttendeeLogin email={formData.email}
                             onEmail={email => setFormData(prev => ({ ...prev, email }))}
                             onVerified={setVerifiedUser}
                             onProfile={profile => {
-                                const mapped = mapProfile(profile, UNIVERSITIES);
+                                const mapped = profile;
                                 setFormData(prev => ({ ...prev, ...mapped }));
                                 if (profile.company) setSearchTerm(profile.company);
                                 setErrors({});
