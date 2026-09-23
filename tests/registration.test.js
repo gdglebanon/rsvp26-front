@@ -1,42 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { api, readPending, PENDING_KEY, EDIT_WINDOW_MS, savedProfile } from '../src/lib/registration.js';
+import { request, saveRegistration, checkedEmail } from '../src/lib/registration.js';
 
-function reset() {
-    const data = new Map();
-    globalThis.sessionStorage = {
-        getItem: key => data.get(key) ?? null,
-        setItem: (key, value) => data.set(key, value),
-        removeItem: key => data.delete(key),
-    };
-}
-test('pending demo survives a reload and email corrections preserve the deadline', async () => {
-    reset();
-    const session = await api('pending', { email: ' First@example.test ', form: { firstName: 'Ada', secretCode: 'private' } });
-    assert.equal(readPending().email, 'first@example.test');
-    assert.equal(readPending().form.secretCode, undefined);
-    assert.ok(session.editUntil <= Date.now() + EDIT_WINDOW_MS);
-    const updated = await api('pending-session', { id: session.id, newEmail: 'next@example.test' });
-    assert.equal(updated.editUntil, session.editUntil);
-    await assert.rejects(api('complete-pending', session, { email: session.email, demo: true }));
-    await api('complete-pending', updated, { email: updated.email, demo: true });
-    assert.equal(readPending(), null);
-    assert.equal(savedProfile(updated.email).firstName, 'Ada');
+const user = { email: 'alex@example.com', emailVerified: true, getIdToken: async () => 'verified-token' };
+test('create and edit send Firebase bearer tokens and revision', async () => {
+    const calls=[];
+    globalThis.fetch = async (url, init) => { calls.push({url,init}); return {ok:true,json:async()=>({id:'ticket'})}; };
+    await saveRegistration(user,{email:user.email},null);
+    await saveRegistration(user,{email:user.email},{version:4});
+    assert.equal(calls[0].init.headers.Authorization,'Bearer verified-token');
+    assert.equal(calls[0].init.method,'POST');
+    assert.equal(calls[1].init.method,'PUT');
+    assert.equal(JSON.parse(calls[1].init.body).version,4);
 });
-test('expired editing window still permits confirmation and prevents email changes', async () => {
-    reset();
-    const session = await api('pending', { email: 'a@example.test', form: { firstName: 'Ada', comments: 'Old event' } });
-    session.editUntil = Date.now() - 1;
-    sessionStorage.setItem(PENDING_KEY, JSON.stringify(session));
-    await assert.rejects(api('pending-session', { id: session.id, newEmail: 'b@example.test' }));
-    await api('complete-pending', session, { email: session.email, demo: true });
-    assert.equal(savedProfile(session.email).comments, undefined);
+test('demo identities and mismatched form email cannot submit', () => {
+    assert.throws(()=>saveRegistration({email:user.email,demo:true},{email:user.email}),/Verify/);
+    assert.throws(()=>saveRegistration(user,{email:'other@example.com'}),/verified email/);
 });
-test('invalid addresses, stale sessions, and mismatched confirmations are rejected', async () => {
-    reset();
-    await assert.rejects(api('pending', { email: 'invalid', form: {} }));
-    await assert.rejects(api('pending-session', { id: 'missing' }));
-    await assert.rejects(api('register', { email: 'a@example.test', form: {} }, { email: 'b@example.test', demo: true }));
-    await api('register', { email: 'a@example.test', form: { firstName: 'Ada' } }, { email: 'a@example.test', demo: true });
-    assert.equal(savedProfile('A@example.test').firstName, 'Ada');
+test('API validation messages and stale updates are surfaced', async () => {
+    globalThis.fetch=async()=>({ok:false,status:409,json:async()=>({detail:'Registration changed; reload before editing'})});
+    await assert.rejects(request('registration',{user}),error=>error.status===409 && /reload/.test(error.message));
+    globalThis.fetch=async()=>({ok:false,status:422,json:async()=>({detail:[{loc:['body','form','major'],msg:'Required'}]})});
+    await assert.rejects(request('register',{user}),/form.major: Required/);
+});
+test('email input is normalized and validated', () => {
+    assert.equal(checkedEmail(' ALEX@example.com '),'alex@example.com');
+    assert.throws(()=>checkedEmail('invalid'));
 });

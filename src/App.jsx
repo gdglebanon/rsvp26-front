@@ -14,13 +14,11 @@ import {
     AlertTriangle
 } from 'lucide-react'
 import DevFestLogo from './components/DevFestLogo'
-import { EVENT_CONFIG, isRegistrationOpen } from './config'
+import { EVENT_CONFIG } from './config'
 import { FormField } from './components/FormField'
 import { SearchableSelect } from './components/SearchableSelect'
 import './App.css'
-import AttendeeLogin from './components/AttendeeLogin'
-import VerificationStep, { readPending, PENDING_KEY } from './components/VerificationStep'
-import { api } from './lib/registration'
+import { checkedEmail, request, saveRegistration } from './lib/registration'
 
 const UNIVERSITIES = [
     {
@@ -258,18 +256,18 @@ const DEVFEST_ATTENDANCE_OPTIONS = [
     "No"
 ]
 
-const App = () => {
+const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderEmailSignIn, pendingEmail, initialDraft }) => {
     const [isOpen, setIsOpen] = useState(true)
     const [isVip, setIsVip] = useState(false)
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
-        setIsVip(params.has('vip'));
+        setIsVip(params.has('vip') && !attendee.ticket);
     }, []);
 
     const [formData, setFormData] = useState({
         secretCode: '',
-        email: '',
+        email: user?.email || initialDraft?.email || '',
         firstName: '',
         lastName: '',
         specialization: '',
@@ -295,18 +293,36 @@ const App = () => {
         techInterests: [],
         otherTechInterestInput: '',
         comments: '',
-        attendanceType: ''
+        attendanceType: '',
+        major: '',
+        otherTakeawaysInput: '',
+        ...initialDraft,
+        ...attendee.profile,
+        ...attendee.ticket?.answers,
+        ...(user ? { email: user.email } : {})
     })
 
-    const [pending, setPending] = useState(readPending)
-    const [verifiedUser, setVerifiedUser] = useState(null)
+    const [knownEmail, setKnownEmail] = useState(false)
+    useEffect(() => {
+        setKnownEmail(false);
+        if (user) return;
+        let active = true;
+        const timer = setTimeout(async () => {
+            try {
+                const email = checkedEmail(formData.email);
+                const result = await request('identity/lookup', { method: 'POST', body: { email } });
+                if (active) setKnownEmail(result.exists);
+            } catch { /* Presence lookup is optional; submission still requires verification. */ }
+        }, 600);
+        return () => { active = false; clearTimeout(timer); };
+    }, [formData.email, user]);
     const [submitError, setSubmitError] = useState('')
     const [errors, setErrors] = useState({})
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isSuccess, setIsSuccess] = useState(false)
 
     // Company Search State
-    const [searchTerm, setSearchTerm] = useState('')
+    const [searchTerm, setSearchTerm] = useState(attendee.profile?.company || UNIVERSITIES.find(u => u.abbreviation === attendee.profile?.university)?.full_name || attendee.profile?.university || '')
     const [searchResults, setSearchResults] = useState([])
     const [showAddCompany, setShowAddCompany] = useState(false)
     const [isCompanyFocused, setIsCompanyFocused] = useState(false)
@@ -323,8 +339,8 @@ const App = () => {
     }, [])
 
     useEffect(() => {
-        setIsOpen(isRegistrationOpen());
-    }, [])
+        setIsOpen(eventConfig.registrationOpen || Boolean(attendee.ticket));
+    }, [eventConfig.registrationOpen, attendee.ticket])
 
     useEffect(() => {
         const selectedUniv = UNIVERSITIES.find(u => u.abbreviation === formData.university);
@@ -396,7 +412,7 @@ const App = () => {
         if (formData.takeaways.length === 0) newErrors.takeaways = 'Please select your main takeaways';
         if (!formData.referral) newErrors.referral = 'Please select how you heard about us';
         if (!formData.attendanceType) newErrors.attendanceType = 'Please select your expected attendance';
-        if (!formData.company && !formData.university && !searchTerm) {
+        if (!formData.company && !formData.university) {
             newErrors.companySearch = 'Company or university is required. Search and select or add a new one.';
         }
 
@@ -424,6 +440,13 @@ const App = () => {
         e.preventDefault();
         setSubmitError('');
         if (validate()) {
+            if (!user?.emailVerified) {
+                setIsSubmitting(true);
+                try { await onUnverifiedSubmit(formData); }
+                catch (error) { setSubmitError(error.message); }
+                finally { setIsSubmitting(false); }
+                return;
+            }
             setIsSubmitting(true);
             // Build referral value
             let referralValue = formData.referral;
@@ -434,14 +457,9 @@ const App = () => {
             }
             const submitData = { ...formData, referral: referralValue };
             try {
-                if (verifiedUser && verifiedUser.email?.toLowerCase() === formData.email.trim().toLowerCase()) {
-                    await api('register', { email: formData.email, form: submitData }, verifiedUser);
-                    setIsSuccess(true);
-                } else {
-                    const session = await api('pending', { email: formData.email, form: submitData });
-                    sessionStorage.setItem(PENDING_KEY, JSON.stringify(session));
-                    setPending(session);
-                }
+                await saveRegistration(user, submitData, attendee.ticket);
+                await onSaved();
+                setIsSuccess(true);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             } catch (error) { setSubmitError(error.message); }
             finally { setIsSubmitting(false); }
@@ -512,7 +530,7 @@ const App = () => {
             tempErrors.major = 'Please choose your major';
         }
 
-        if (!currentData.company && !currentData.university && !searchTerm) {
+        if (!currentData.company && !currentData.university) {
             tempErrors.companySearch = 'Company or university is required. Search and select or add a new one.';
         }
         if (currentData.attendedBefore === '') tempErrors.attendedBefore = 'Please select an option';
@@ -576,8 +594,6 @@ const App = () => {
 
     const isProfessionalOrFreshGrad = formData.status === 'professional' || formData.status === 'fresh_graduate';
 
-    if (pending && !isSuccess) return <VerificationStep initial={pending} onDone={firstName => { setFormData(prev => ({ ...prev, firstName })); setPending(null); setIsSuccess(true); }} />;
-
     if (!isOpen) {
         return (
             <div className="app-container closed-container">
@@ -605,8 +621,9 @@ const App = () => {
                     className="success-message"
                 >
                     <CheckCircle2 size={64} className="success-icon" />
-                    <h1>Demo RSVP Complete!</h1>
-                    <p>Thank you, {formData.firstName}. Your demo registration is saved in this browser session. No RSVP or email has been sent.</p>
+                    <h1>Your information is saved</h1>
+                    <p>Thank you, {formData.firstName}. Check your application status above for the next step.</p>
+                    <button className="btn-primary" onClick={() => setIsSuccess(false)}>Edit my information</button>
                 </motion.div>
             </div>
         )
@@ -647,19 +664,12 @@ const App = () => {
                         <h2>Personal Information</h2>
 
                         <FormField label="Email" required error={errors.email}>
-                            <input type="email" name="email" placeholder="your.email@example.com" aria-describedby="email-reminder" value={formData.email} onChange={handleChange} onBlur={handleBlur} />
-                            <p id="email-reminder" className="email-reminder">Please double-check your email address. You’ll be asked to verify it later to complete your registration.</p>
+                            <input type="email" name="email" placeholder="your.email@example.com" aria-describedby="email-reminder" value={formData.email} readOnly={Boolean(user)} onChange={handleChange} onBlur={handleBlur} />
+                            <span className={`email-verification-state ${user ? 'is-verified' : ''}`}>{user ? 'Email verified' : 'Email not verified'}</span>
+                            <p id="email-reminder" className="email-reminder">{user ? 'This email is verified through your signed-in account.' : 'Your registration will be saved as unverified until you confirm this email.'}</p>
                         </FormField>
 
-                        <AttendeeLogin email={formData.email}
-                            onEmail={email => setFormData(prev => ({ ...prev, email }))}
-                            onVerified={setVerifiedUser}
-                            onProfile={profile => {
-                                const mapped = profile;
-                                setFormData(prev => ({ ...prev, ...mapped }));
-                                if (profile.company) setSearchTerm(profile.company);
-                                setErrors({});
-                            }} />
+                        {!user && (knownEmail || formData.email.trim().toLowerCase() === pendingEmail) && renderEmailSignIn(formData)}
 
                         <div className="grid-2-always">
                             <FormField label="First Name" required error={errors.firstName}>
@@ -1170,7 +1180,7 @@ const App = () => {
                             className="btn-primary btn-large"
                             disabled={isSubmitting}
                         >
-                            {isSubmitting ? 'Submitting...' : 'Submit RSVP'} <Send size={18} />
+                            {isSubmitting ? 'Saving...' : attendee.ticket ? 'Save changes' : 'Submit RSVP'} <Send size={18} />
                         </button>
                     </div>
 

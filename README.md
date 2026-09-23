@@ -1,28 +1,21 @@
-# GDG Lebanon RSVP
+# DevFest Lebanon RSVP frontend
 
-React/Vite RSVP interface with a browser-only demo registration flow.
+React/Vite frontend connected to the [FastAPI + Firebase backend](https://github.com/gdglebanon/rsvp26-back). In the local combined workspace the backend lives in `../backend`; when cloning these repositories separately, run each project from its own directory.
 
-## Development
-
-```sh
+```bash
 npm install
-npm run dev
+npm run dev -- --host localhost
 ```
 
-Run `npm test` for flow checks and `npm run build` for a production build.
-Optional: copy `.env.example` to `.env.local` to change the hosting base path.
+Run the backend on port 8000 first. Open http://localhost:5173/rsvp-gdg/. `.env.example` documents `VITE_API_URL` and `VITE_BASE_PATH`. The backend supplies the public Firebase web configuration; service-account credentials never belong in this project.
 
-## Registration flow
+The registration form opens immediately. Email typing triggers a background presence-only lookup; returning users see Google/email icons below the email field to verify and load saved details. Unverified submissions are saved in Firestore with an unverified flag before the verification popup opens. Google and Firebase email magic links are active; a numeric OTP option appears when the backend mail provider is configured. The `?auth=callback` page completes email sign-in and securely loads the current user's information. Unverified drafts are preserved locally for 30 minutes, excluding VIP access codes, and cleared on save. The pending submission ID travels through the email callback, and successful verification automatically completes the already submitted form. Frontend badges and backend records reflect whether the email is verified. The same account page supports application edits, status refresh, cancellation, invitation confirmation, and confirmed-ticket QR download. `?vip` reveals the shared access-code field for a new application.
 
-The form, validation, verification buttons, five-minute email correction window,
-and completion screen work without a backend. Google and email sign-in buttons
-simulate confirmation and are explicitly labeled as demo interactions. They do
-not authenticate users, send emails, or submit real RSVPs.
+A legacy attendee profile may be prefilled from Firestore after verification. Event tickets remain separate from reusable personal details. AI screening is disabled. Firebase handles sign-in email; event email and Sheet sync require the settings documented in the [backend README](https://github.com/gdglebanon/rsvp26-back#readme).
 
-Demo registrations and pending forms are stored in sessionStorage for the current
-browser tab. Reloading resumes the pending flow; closing the tab clears its data.
-Returning demo attendees can load their saved profile in the same tab. A real
-verification and registration service must be connected before accepting RSVPs.
+For production, configure the frontend host as a Firebase authorized domain, set the backend's exact CORS origins and frontend URL, and use HTTPS. Set `VITE_BASE_PATH=/` for root hosting or `/rsvp26-front/` for this repository's GitHub Pages project path; the local default remains `/rsvp-gdg/`. Email links opened in another browser ask for the receiving email address. No profile is fetched by an arbitrary URL email/user ID.
 
-Event settings and registration deadline are in `src/config.js`. Use
-`npm run deploy` to publish the static build to GitHub Pages.
+```bash
+npm test
+npm run build
+```
