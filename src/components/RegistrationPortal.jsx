@@ -38,7 +38,7 @@ function AccountPanel({ user, session, onRefresh, auth }) {
         {session.legacyProfileLoaded && <p>Your previous attendee information is loaded. Review it and submit your 2026 application.</p>}
         {ticket ? <>
             <h2>You are already registered · Status: <span className={`ticket-status status-${ticket.status}`}>{ticket.status}</span></h2>
-            <p>{ticket.ticketType === 'VIP' ? 'VIP ticket' : 'Standard application'} · You can update your information below.</p>
+            <p>{ticket.ticketType === 'VIP' ? 'VIP ticket' : 'Standard application'} · {ticket.status === 'cancelled' ? 'You can review your information and resubmit below.' : 'You can update your information below.'}</p>
             {ticket.status === 'submitted' && <p>Your application is awaiting review by the event team.</p>}
             {ticket.status === 'invited' && <><p>Confirm your spot before {new Date(ticket.invitationExpiresAt).toLocaleString()}.</p><button className="btn-primary" disabled={busy} onClick={() => perform(confirm)}>Confirm my spot</button></>}
             {ticket.status === 'expired' && <p>Your invitation has expired. The team will need to issue a new invitation.</p>}

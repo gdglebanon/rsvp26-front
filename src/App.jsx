@@ -1215,7 +1215,7 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
                             className="btn-primary btn-large"
                             disabled={isSubmitting || !submissionReady}
                         >
-                            {isSubmitting ? 'Saving...' : !submissionReady ? 'Connecting…' : attendee.ticket ? 'Save changes' : 'Submit RSVP'} <Send size={18} />
+                            {isSubmitting ? 'Saving...' : !submissionReady ? 'Connecting…' : attendee.ticket?.status === 'cancelled' ? 'Resubmit application' : attendee.ticket ? 'Save changes' : 'Submit RSVP'} <Send size={18} />
                         </button>
                     </div>
 
