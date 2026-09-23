@@ -56,7 +56,7 @@ export default function AttendeeLogin({ auth, completeLink, onRestart, initialEm
     }
     if (compact) return <div className="inline-verification">
         <div className="inline-verification-row">
-            <span>Already have details saved? Sign in to load them.</span>
+            <span>You already have details saved from previous events. Sign in to load them.</span>
             <div className="verification-icons">
                 <button type="button" className="verification-icon" aria-label="Sign in with Google" title="Sign in with Google" disabled={busy} onClick={googleSignIn}><span className="google-mark" aria-hidden="true">G</span></button>
                 <button type="button" className="verification-icon" aria-label="Send an email sign-in link" title="Send an email sign-in link" disabled={busy} onClick={emailSignIn}><Mail size={20} aria-hidden="true"/></button>

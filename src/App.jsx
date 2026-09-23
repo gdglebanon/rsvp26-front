@@ -402,9 +402,9 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
         }
 
         if (!formData.linkedIn) {
-            newErrors.linkedIn = 'LinkedIn Link is required';
-        } else if (!/^https?:\/\/(www\.)?linkedin\.com\/.*$/.test(formData.linkedIn)) {
-            newErrors.linkedIn = 'Please provide a valid LinkedIn URL';
+            newErrors.linkedIn = 'LinkedIn or GitHub URL is required';
+        } else if (!/^https?:\/\/(www\.)?(linkedin\.com|github\.com)\/.*$/.test(formData.linkedIn)) {
+            newErrors.linkedIn = 'Please provide a valid LinkedIn or GitHub URL';
         }
 
         if (!formData.region) newErrors.region = 'Please select a region';
@@ -666,7 +666,7 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
                         <FormField label="Email" required error={errors.email}>
                             <input type="email" name="email" placeholder="your.email@example.com" aria-describedby="email-reminder" value={formData.email} readOnly={Boolean(user)} onChange={handleChange} onBlur={handleBlur} />
                             <span className={`email-verification-state ${user ? 'is-verified' : ''}`}>{user ? 'Email verified' : 'Email not verified'}</span>
-                            <p id="email-reminder" className="email-reminder">{user ? 'This email is verified through your signed-in account.' : 'Your registration will be saved as unverified until you confirm this email.'}</p>
+                            <p id="email-reminder" className="email-reminder">{user ? 'This email is verified through your signed-in account.' : 'Your registration will be saved as unverified until you confirm this email upon submission.'}</p>
                         </FormField>
 
                         {!user && (knownEmail || formData.email.trim().toLowerCase() === pendingEmail) && renderEmailSignIn(formData)}
@@ -684,8 +684,9 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
                             <FormField label="Phone Number" error={errors.phone}>
                                 <input type="tel" name="phone" placeholder="+961 XX XXX XXX" value={formData.phone} onChange={handleChange} onBlur={handleBlur} />
                             </FormField>
-                            <FormField label="LinkedIn Profile Link" required error={errors.linkedIn}>
-                                <input type="url" name="linkedIn" placeholder="https://linkedin.com/in/..." value={formData.linkedIn} onChange={handleChange} onBlur={handleBlur} />
+                            <p id="phone-reminder" className="phone-reminder">We will communicate with you through this number for registration updates and coordination.</p>
+                            <FormField label="LinkedIn or GitHub URL" required error={errors.linkedIn}>
+                                <input type="url" name="linkedIn" placeholder="https://linkedin.com/in/... or https://github.com/..." value={formData.linkedIn} onChange={handleChange} onBlur={handleBlur} />
                             </FormField>
                         </div>
 
