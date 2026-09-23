@@ -2,6 +2,8 @@
 
 React/Vite frontend connected to the [FastAPI + Firebase backend](https://github.com/gdglebanon/rsvp26-back). In the local combined workspace the backend lives in `../backend`; when cloning these repositories separately, run each project from its own directory.
 
+Follow the [Vercel deployment guide](https://github.com/gdglebanon/rsvp26-back/blob/main/DEPLOYMENT.md) for `rsvp.gdglebanon.com`. On Vercel set `VITE_BASE_PATH=/` and `VITE_API_URL=https://rsvp26-back-ktwg.vercel.app`, then redeploy. Production builds default to `/`; local development defaults to `/rsvp-gdg/` unless overridden.
+
 ```bash
 npm install
 npm run dev -- --host localhost
