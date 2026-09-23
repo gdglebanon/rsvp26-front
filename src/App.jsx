@@ -1,3 +1,4 @@
+import { mergeLoadedForm } from './lib/form-hydration';
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import {
@@ -258,14 +259,14 @@ const DEVFEST_ATTENDANCE_OPTIONS = [
     "No"
 ]
 
-const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderEmailSignIn, pendingEmail, initialDraft }) => {
+const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderEmailSignIn, pendingEmail, initialDraft, submissionReady = true }) => {
     const [isOpen, setIsOpen] = useState(true)
     const [isVip, setIsVip] = useState(false)
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         setIsVip(params.has('vip') && !attendee.ticket);
-    }, []);
+    }, [attendee.ticket]);
 
     const [formData, setFormData] = useState({
         secretCode: '',
@@ -304,7 +305,19 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
         ...(user ? { email: user.email } : {})
     })
 
+    // Apply background account data without discarding fields edited while it loaded.
+    const loadedForm = useRef(formData);
+    useEffect(() => {
+        const incoming = { ...attendee.profile, ...attendee.ticket?.answers,
+            ...(user ? { email: user.email } : {}) };
+        const previous = loadedForm.current;
+        setFormData(current => mergeLoadedForm(current, previous, incoming));
+        loadedForm.current = { ...previous, ...incoming };
+    }, [user?.email, attendee.profile, attendee.ticket]);
+
     const [knownEmail, setKnownEmail] = useState(false)
+    const [loginEmail, setLoginEmail] = useState('')
+    const loginRequired = !user && Boolean(loginEmail) && loginEmail === formData.email.trim().toLowerCase();
     useEffect(() => {
         setKnownEmail(false);
         if (user) return;
@@ -313,7 +326,10 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
             try {
                 const email = checkedEmail(formData.email);
                 const result = await request('identity/lookup', { method: 'POST', body: { email } });
-                if (active) setKnownEmail(result.exists);
+                if (active) {
+                    setKnownEmail(result.exists);
+                    setLoginEmail(result.loginRequired ? email : '');
+                }
             } catch { /* Presence lookup is optional; submission still requires verification. */ }
         }, 600);
         return () => { active = false; clearTimeout(timer); };
@@ -329,6 +345,12 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
     const [showAddCompany, setShowAddCompany] = useState(false)
     const [isCompanyFocused, setIsCompanyFocused] = useState(false)
     const companySearchRef = useRef(null)
+
+    useEffect(() => {
+        if (!isCompanyFocused) {
+            setSearchTerm(formData.company || UNIVERSITIES.find(u => u.abbreviation === formData.university)?.full_name || formData.university || '');
+        }
+    }, [formData.company, formData.university]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -441,11 +463,15 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
     const handleSubmit = async (e) => {
         e.preventDefault();
         setSubmitError('');
+        if (loginRequired || !submissionReady) return;
         if (validate()) {
             if (!user?.emailVerified) {
                 setIsSubmitting(true);
                 try { await onUnverifiedSubmit(formData); }
-                catch (error) { setSubmitError(error.message); }
+                catch (error) {
+                    setSubmitError(error.message);
+                    if (error.status === 409 && error.message === 'Login is necessary to continue your registration.') setLoginEmail(formData.email.trim().toLowerCase());
+                }
                 finally { setIsSubmitting(false); }
                 return;
             }
@@ -644,7 +670,13 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
             </header>
 
             <main className="form-wrapper">
-                <form onSubmit={handleSubmit} className="single-page-form" noValidate>
+                {loginRequired ? <section className="form-section">
+                    <h2>Continue your registration</h2>
+                    <FormField label="Email" required>
+                        <input type="email" name="email" value={formData.email} onChange={handleChange} autoComplete="email" />
+                    </FormField>
+                    {renderEmailSignIn(formData, true)}
+                </section> : <form onSubmit={handleSubmit} className="single-page-form" noValidate>
                     {submitError && <p role="alert" className="login-panel login-error">{submitError}</p>}
 
                     {isVip && (
@@ -1181,13 +1213,13 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
                         <button
                             type="submit"
                             className="btn-primary btn-large"
-                            disabled={isSubmitting}
+                            disabled={isSubmitting || !submissionReady}
                         >
-                            {isSubmitting ? 'Saving...' : attendee.ticket ? 'Save changes' : 'Submit RSVP'} <Send size={18} />
+                            {isSubmitting ? 'Saving...' : !submissionReady ? 'Connecting…' : attendee.ticket ? 'Save changes' : 'Submit RSVP'} <Send size={18} />
                         </button>
                     </div>
 
-                </form>
+                </form>}
             </main>
         </div>
     )

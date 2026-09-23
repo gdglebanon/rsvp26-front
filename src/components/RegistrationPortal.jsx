@@ -60,6 +60,9 @@ export default function RegistrationPortal() {
     const [config, setConfig] = useState(null), [auth, setAuth] = useState(null), [user, setUser] = useState(null);
     const [session, setSession] = useState(null), [error, setError] = useState(''), [loading, setLoading] = useState(true);
     const [needsEmail, setNeedsEmail] = useState(false);
+    const [formGeneration, setFormGeneration] = useState(0);
+    const [connectionAttempt, setConnectionAttempt] = useState(0);
+    const previousUid = useRef(null);
     const [draft, setDraft] = useState(readDraft);
     const [showVerification, setShowVerification] = useState(false);
     const [pendingSubmission, setPendingSubmission] = useState(readPendingSubmission);
@@ -97,6 +100,7 @@ export default function RegistrationPortal() {
     }
     useEffect(() => {
         let active = true, unsubscribe;
+        setLoading(true); setError('');
         const pendingId = new URLSearchParams(window.location.search).get('pending');
         if (pendingId && /^[a-f0-9]{64}$/.test(pendingId)) {
             pendingRef.current = { id: pendingId };
@@ -108,6 +112,8 @@ export default function RegistrationPortal() {
             window.history.replaceState({}, '', window.location.pathname + window.location.search);
         }
         request('config').then(async data => {
+            if (!active) return;
+            setConfig(data);
             const firebaseAuth = await configureAuth(data.firebase);
             if (!active) return;
             setConfig(data); setAuth(firebaseAuth);
@@ -127,6 +133,11 @@ export default function RegistrationPortal() {
                     setShowVerification(Boolean(pendingRef.current?.id));
                     return;
                 }
+                if (previousUid.current && previousUid.current !== current?.uid) {
+                    setFormGeneration(value => value + 1);
+                    clearDraft(); setDraft(null);
+                }
+                previousUid.current = current?.uid || null;
                 ++generation.current; setUser(current); setSession(null); setLoading(true);
                 try {
                     if (current?.emailVerified) {
@@ -139,10 +150,7 @@ export default function RegistrationPortal() {
             });
         }).catch(e => { if (active) { setError(authErrorMessage(e)); setLoading(false); } });
         return () => { active = false; ++generation.current; unsubscribe?.(); };
-    }, []);
-    if (loading) return <main className="auth-shell"><p role="status">Loading registration…</p></main>;
-    if (!auth) return <main className="auth-shell"><section className="auth-card"><h1>Connection unavailable</h1><p role="alert">{error}</p><button onClick={() => window.location.reload()}>Try again</button></section></main>;
-    if (user && !session) return <main className="auth-shell"><section className="auth-card"><p role="alert">{error || 'Your verified profile could not be loaded.'}</p><button onClick={() => window.location.reload()}>Try again</button><button onClick={() => signOut(auth)}>Sign out</button></section></main>;
+    }, [connectionAttempt]);
     const attendee = session || { profile: null, ticket: null };
     function prepareAuthentication(form) {
         verificationEmail.current = checkedEmail(form.email);
@@ -163,15 +171,20 @@ export default function RegistrationPortal() {
         await load(user);
     }
     return <>
+        {!loading && error && (!auth || (user && !session)) && <aside className="account-panel">
+            <p role="alert" className="login-error">{error}</p>
+            <button onClick={() => { setLoading(true); setConnectionAttempt(value => value + 1); }}>Retry connection</button>
+            {user && auth && <button onClick={() => signOut(auth)}>Sign out</button>}
+        </aside>}
         {user && session && <AccountPanel user={user} session={session} auth={auth} onRefresh={() => load(user)}/>}
         {pendingError && <aside className="account-panel"><p role="alert" className="login-error">Your email is verified, but the saved registration could not be completed: {pendingError}</p><button onClick={() => load(user)}>Retry saved registration</button></aside>}
-        {!attendee.ticket?.checkedInAt && <App key={`${user?.uid || 'guest'}:${attendee.ticket?.version || 0}`}
-            user={user} attendee={attendee} eventConfig={config} onSaved={saved} onUnverifiedSubmit={submitUnverified} initialDraft={draft} pendingEmail={pendingSubmission?.email}
-            renderEmailSignIn={form => <AttendeeLogin key={form.email} compact auth={auth}
+        {!attendee.ticket?.checkedInAt && <App key={formGeneration} submissionReady={!loading && Boolean(auth) && (!user || Boolean(session))}
+            user={user} attendee={attendee} eventConfig={config || { registrationOpen: true }} onSaved={saved} onUnverifiedSubmit={submitUnverified} initialDraft={draft} pendingEmail={pendingSubmission?.email}
+            renderEmailSignIn={(form, loginRequired = false) => <AttendeeLogin key={form.email} compact auth={auth} loginRequired={loginRequired}
                 initialEmail={form.email} error={error}
                 pendingId={pendingSubmission?.email === normalizeEmail(form.email) ? pendingSubmission.id : undefined}
                 onBeforeAuthenticate={() => prepareAuthentication(form)}/> }/>}
-        {(showVerification || needsEmail) && <div className="verification-overlay" role="dialog" aria-modal="true" aria-label="Verify your email">
+        {auth && (showVerification || needsEmail) && <div className="verification-overlay" role="dialog" aria-modal="true" aria-label="Verify your email">
             <div><AttendeeLogin auth={auth} otpAvailable={config.otpAvailable} initialEmail={verificationEmail.current}
                 submitted={Boolean(pendingSubmission?.id)} pendingId={pendingSubmission?.id}
                 completeLink={needsEmail ? finishEmail : null}
