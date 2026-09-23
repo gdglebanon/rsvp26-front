@@ -920,3 +920,17 @@
     border-color: var(--google-red);
     background-color: #fffaf9;
 }
+.login-panel { margin: 12px 0 24px; padding: 16px; border: 1px solid #a8c7fa; border-radius: 12px; background: #f3f7ff; color: #202124; }
+.login-panel p { margin: 0 0 10px; line-height: 1.5; }
+.login-options { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.login-panel button { padding: 11px 16px; border: 1px solid #1967d2; border-radius: 8px; background: white; color: #174ea6; font: inherit; cursor: pointer; }
+.login-panel button:disabled { opacity: .6; cursor: wait; }
+.login-panel .login-error { color: #b3261e; margin-top: 10px; }
+.verification-step { margin: 48px auto; padding: 32px; max-width: 620px; }
+.verification-step h1 { margin-bottom: 16px; }
+.verification-step p { line-height: 1.6; margin-bottom: 16px; }
+.confirmation-email { overflow-wrap: anywhere; color: #1967d2; font-size: 1.15rem; }
+.email-edit-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.email-edit-row input { flex: 1; min-width: 180px; }
+.email-edit-row button, .verification-step > button { padding: 10px 16px; border: 1px solid #1967d2; border-radius: 8px; background: white; color: #174ea6; cursor: pointer; }
+.login-error { color: #b3261e; }

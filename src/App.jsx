@@ -18,6 +18,10 @@ import { EVENT_CONFIG, isRegistrationOpen } from './config'
 import { FormField } from './components/FormField'
 import { SearchableSelect } from './components/SearchableSelect'
 import './App.css'
+import AttendeeLogin from './components/AttendeeLogin'
+import VerificationStep, { readPending, PENDING_KEY } from './components/VerificationStep'
+import { mapProfile } from './lib/profile'
+import { api } from './lib/firebase'
 
 const UNIVERSITIES = [
     {
@@ -295,6 +299,9 @@ const App = () => {
         attendanceType: ''
     })
 
+    const [pending, setPending] = useState(readPending)
+    const [verifiedUser, setVerifiedUser] = useState(null)
+    const [submitError, setSubmitError] = useState('')
     const [errors, setErrors] = useState({})
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isSuccess, setIsSuccess] = useState(false)
@@ -414,8 +421,9 @@ const App = () => {
         return true;
     }
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        setSubmitError('');
         if (validate()) {
             setIsSubmitting(true);
             // Build referral value
@@ -426,13 +434,18 @@ const App = () => {
                 referralValue = `Other: ${formData.referralOtherText}`;
             }
             const submitData = { ...formData, referral: referralValue };
-            console.log("Form Data Submitted:", submitData);
-            // Simulate API call
-            setTimeout(() => {
-                setIsSubmitting(false);
-                setIsSuccess(true);
+            try {
+                if (verifiedUser && verifiedUser.email?.toLowerCase() === formData.email.trim().toLowerCase()) {
+                    await api('register', { email: formData.email, form: submitData }, verifiedUser);
+                    setIsSuccess(true);
+                } else {
+                    const session = await api('pending', { email: formData.email, form: submitData });
+                    localStorage.setItem(PENDING_KEY, JSON.stringify(session));
+                    setPending(session);
+                }
                 window.scrollTo({ top: 0, behavior: 'smooth' });
-            }, 1500);
+            } catch (error) { setSubmitError(error.message); }
+            finally { setIsSubmitting(false); }
         }
     }
 
@@ -564,6 +577,8 @@ const App = () => {
 
     const isProfessionalOrFreshGrad = formData.status === 'professional' || formData.status === 'fresh_graduate';
 
+    if (pending && !isSuccess) return <VerificationStep initial={pending} onDone={firstName => { setFormData(prev => ({ ...prev, firstName })); setPending(null); setIsSuccess(true); }} />;
+
     if (!isOpen) {
         return (
             <div className="app-container closed-container">
@@ -592,7 +607,7 @@ const App = () => {
                 >
                     <CheckCircle2 size={64} className="success-icon" />
                     <h1>RSVP Submitted Successfully!</h1>
-                    <p>Thank you, {formData.firstName}. We have received your registration and will contact you soon.</p>
+                    <p>Thank you, {formData.firstName}. Your email is confirmed and your registration is complete. Please wait for our notice.</p>
                 </motion.div>
             </div>
         )
@@ -612,6 +627,7 @@ const App = () => {
 
             <main className="form-wrapper">
                 <form onSubmit={handleSubmit} className="single-page-form" noValidate>
+                    {submitError && <p role="alert" className="login-panel login-error">{submitError}</p>}
 
                     {isVip && (
                         <section className="form-section">
@@ -634,6 +650,16 @@ const App = () => {
                         <FormField label="Email" required error={errors.email}>
                             <input type="email" name="email" placeholder="your.email@example.com" value={formData.email} onChange={handleChange} onBlur={handleBlur} />
                         </FormField>
+
+                        <AttendeeLogin email={formData.email}
+                            onEmail={email => setFormData(prev => ({ ...prev, email }))}
+                            onVerified={setVerifiedUser}
+                            onProfile={profile => {
+                                const mapped = mapProfile(profile, UNIVERSITIES);
+                                setFormData(prev => ({ ...prev, ...mapped }));
+                                if (profile.company) setSearchTerm(profile.company);
+                                setErrors({});
+                            }} />
 
                         <div className="grid-2-always">
                             <FormField label="First Name" required error={errors.firstName}>
