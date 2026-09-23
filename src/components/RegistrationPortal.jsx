@@ -1,3 +1,4 @@
+import { isEmailVerificationRedirect } from '../lib/email-redirect';
 import { authErrorMessage } from '../lib/auth-errors';
 import { useEffect, useRef, useState } from 'react';
 import { isSignInWithEmailLink, onAuthStateChanged, signInWithEmailLink, signOut } from 'firebase/auth';
@@ -60,6 +61,7 @@ export default function RegistrationPortal() {
     const [config, setConfig] = useState(null), [auth, setAuth] = useState(null), [user, setUser] = useState(null);
     const [session, setSession] = useState(null), [error, setError] = useState(''), [loading, setLoading] = useState(true);
     const [needsEmail, setNeedsEmail] = useState(false);
+    const [emailRedirect, setEmailRedirect] = useState(() => isEmailVerificationRedirect(window.location.href));
     const [formGeneration, setFormGeneration] = useState(0);
     const [connectionAttempt, setConnectionAttempt] = useState(0);
     const previousUid = useRef(null);
@@ -92,10 +94,14 @@ export default function RegistrationPortal() {
     async function finishEmail(email, targetAuth = auth) {
         if (linkCompleting.current) return;
         linkCompleting.current = true;
+        setLoading(true); setNeedsEmail(false);
         try {
             await signInWithEmailLink(targetAuth, email, window.location.href);
             localStorage.removeItem('rsvpSignInEmail');
             clearCallback(); setNeedsEmail(false);
+        } catch (e) {
+            setNeedsEmail(true); setLoading(false);
+            throw e;
         } finally { linkCompleting.current = false; }
     }
     useEffect(() => {
@@ -118,6 +124,7 @@ export default function RegistrationPortal() {
             if (!active) return;
             setConfig(data); setAuth(firebaseAuth);
             if (isSignInWithEmailLink(firebaseAuth, window.location.href)) {
+                setEmailRedirect(true);
                 const email = localStorage.getItem('rsvpSignInEmail');
                 if (email) {
                     try { await finishEmail(email, firebaseAuth); }
@@ -127,6 +134,11 @@ export default function RegistrationPortal() {
             if (!active) return;
             unsubscribe = onAuthStateChanged(firebaseAuth, async current => {
                 if (!active) return;
+                // A pre-existing session must not bypass an unfinished email link.
+                if (isSignInWithEmailLink(firebaseAuth, window.location.href) && !linkCompleting.current) {
+                    setLoading(false);
+                    return;
+                }
                 if (current && verificationEmail.current && normalizeEmail(current.email) !== normalizeEmail(verificationEmail.current)) {
                     setError(`Sign in with ${verificationEmail.current} to verify this form.`);
                     await signOut(firebaseAuth);
@@ -142,7 +154,7 @@ export default function RegistrationPortal() {
                 try {
                     if (current?.emailVerified) {
                         await load(current);
-                        if (active) { setShowVerification(false); setNeedsEmail(false); setError(''); }
+                        if (active) { setShowVerification(false); setNeedsEmail(false); setError(''); setEmailRedirect(false); }
                     }
                     else if (current) setError('Please verify your email to continue.');
                 } catch (e) { if (active) setError(authErrorMessage(e)); }
@@ -170,6 +182,9 @@ export default function RegistrationPortal() {
         clearDraft(); clearPendingSubmission(); pendingRef.current = null; setPendingSubmission(null); setDraft(null); verificationEmail.current = '';
         await load(user);
     }
+    if (emailRedirect && loading && !needsEmail) {
+        return <main className="auth-shell"><p role="status">Verifying your email and loading your submission status…</p></main>;
+    }
     return <>
         {!loading && error && (!auth || (user && !session)) && <aside className="account-panel">
             <p role="alert" className="login-error">{error}</p>
@@ -178,7 +193,7 @@ export default function RegistrationPortal() {
         </aside>}
         {user && session && <AccountPanel user={user} session={session} auth={auth} onRefresh={() => load(user)}/>}
         {pendingError && <aside className="account-panel"><p role="alert" className="login-error">Your email is verified, but the saved registration could not be completed: {pendingError}</p><button onClick={() => load(user)}>Retry saved registration</button></aside>}
-        {!attendee.ticket?.checkedInAt && <App key={formGeneration} submissionReady={!loading && Boolean(auth) && (!user || Boolean(session))}
+        {!(emailRedirect && needsEmail) && !attendee.ticket?.checkedInAt && <App key={formGeneration} submissionReady={!loading && Boolean(auth) && (!user || Boolean(session))}
             user={user} attendee={attendee} eventConfig={config || { registrationOpen: true }} onSaved={saved} onUnverifiedSubmit={submitUnverified} initialDraft={draft} pendingEmail={pendingSubmission?.email}
             renderEmailSignIn={(form, loginRequired = false) => <AttendeeLogin key={form.email} compact auth={auth} loginRequired={loginRequired}
                 initialEmail={form.email} error={error}
@@ -188,8 +203,8 @@ export default function RegistrationPortal() {
             <div><AttendeeLogin auth={auth} otpAvailable={config.otpAvailable} initialEmail={verificationEmail.current}
                 submitted={Boolean(pendingSubmission?.id)} pendingId={pendingSubmission?.id}
                 completeLink={needsEmail ? finishEmail : null}
-                onRestart={() => { clearCallback(); setNeedsEmail(false); setError(''); }} error={error}/>
-                <button className="verification-back" onClick={() => { clearCallback(); setNeedsEmail(false); setShowVerification(false); setError(''); }}>Continue filling the form</button>
+                onRestart={() => { clearCallback(); setEmailRedirect(false); setNeedsEmail(false); setShowVerification(true); setError(''); }} error={error}/>
+                <button className="verification-back" onClick={() => { clearCallback(); setEmailRedirect(false); setNeedsEmail(false); setShowVerification(false); setError(''); }}>Continue filling the form</button>
                 <p className="verification-note">{pendingSubmission?.id ? 'Your registration is saved with an unverified email. Verification will complete it automatically.' : 'Your saved details will load after you verify your email.'}</p>
             </div>
         </div>}
