@@ -1,7 +1,7 @@
 import { isEmailVerificationRedirect } from '../lib/email-redirect';
 import { authErrorMessage } from '../lib/auth-errors';
 import { useEffect, useRef, useState } from 'react';
-import { isSignInWithEmailLink, onAuthStateChanged, signInWithEmailLink, signOut } from 'firebase/auth';
+import { isSignInWithEmailLink, applyActionCode, reload, onIdTokenChanged, signInWithEmailLink, signOut } from 'firebase/auth';
 import App from '../App';
 import { configureAuth } from '../lib/firebase';
 import { request, checkedEmail, normalizeEmail } from '../lib/registration';
@@ -123,6 +123,24 @@ export default function RegistrationPortal() {
             const firebaseAuth = await configureAuth(data.firebase);
             if (!active) return;
             setConfig(data); setAuth(firebaseAuth);
+            await firebaseAuth.authStateReady();
+            if (!active) return;
+            const actionParams = new URLSearchParams(window.location.search);
+            if (actionParams.get('mode') === 'verifyEmail' && actionParams.get('oobCode')) {
+                try {
+                    await applyActionCode(firebaseAuth, actionParams.get('oobCode'));
+                    clearCallback();
+                } catch (e) {
+                    setError(authErrorMessage(e));
+                }
+            }
+            if (emailRedirect && !isSignInWithEmailLink(firebaseAuth, window.location.href)) {
+                if (firebaseAuth.currentUser) {
+                    await reload(firebaseAuth.currentUser);
+                    await firebaseAuth.currentUser.getIdToken(true);
+                }
+                setShowVerification(true);
+            }
             if (isSignInWithEmailLink(firebaseAuth, window.location.href)) {
                 setEmailRedirect(true);
                 const email = localStorage.getItem('rsvpSignInEmail');
@@ -132,7 +150,7 @@ export default function RegistrationPortal() {
                 } else setNeedsEmail(true);
             }
             if (!active) return;
-            unsubscribe = onAuthStateChanged(firebaseAuth, async current => {
+            unsubscribe = onIdTokenChanged(firebaseAuth, async current => {
                 if (!active) return;
                 // A pre-existing session must not bypass an unfinished email link.
                 if (isSignInWithEmailLink(firebaseAuth, window.location.href) && !linkCompleting.current) {
@@ -156,7 +174,7 @@ export default function RegistrationPortal() {
                         await load(current);
                         if (active) { setShowVerification(false); setNeedsEmail(false); setError(''); setEmailRedirect(false); }
                     }
-                    else if (current) setError('Please verify your email to continue.');
+                    else if (current) { setShowVerification(true); setError(''); }
                 } catch (e) { if (active) setError(authErrorMessage(e)); }
                 finally { if (active) setLoading(false); }
             });
@@ -193,14 +211,14 @@ export default function RegistrationPortal() {
         </aside>}
         {user && session && <AccountPanel user={user} session={session} auth={auth} onRefresh={() => load(user)}/>}
         {pendingError && <aside className="account-panel"><p role="alert" className="login-error">Your email is verified, but the saved registration could not be completed: {pendingError}</p><button onClick={() => load(user)}>Retry saved registration</button></aside>}
-        {!(emailRedirect && needsEmail) && !attendee.ticket?.checkedInAt && <App key={formGeneration} submissionReady={!loading && Boolean(auth) && (!user || Boolean(session))}
+        {!(emailRedirect && needsEmail) && !attendee.ticket?.checkedInAt && <App key={formGeneration} submissionReady={!loading && Boolean(auth) && (!user?.emailVerified || Boolean(session))}
             user={user} attendee={attendee} eventConfig={config || { registrationOpen: true }} onSaved={saved} onUnverifiedSubmit={submitUnverified} initialDraft={draft} pendingEmail={pendingSubmission?.email}
             renderEmailSignIn={(form, loginRequired = false) => <AttendeeLogin key={form.email} compact auth={auth} loginRequired={loginRequired}
-                initialEmail={form.email} error={error}
+                initialEmail={form.email} error={error} onEmailSignIn={() => setShowVerification(true)}
                 pendingId={pendingSubmission?.email === normalizeEmail(form.email) ? pendingSubmission.id : undefined}
                 onBeforeAuthenticate={() => prepareAuthentication(form)}/> }/>}
         {auth && (showVerification || needsEmail) && <div className="verification-overlay" role="dialog" aria-modal="true" aria-label="Verify your email">
-            <div><AttendeeLogin auth={auth} otpAvailable={config.otpAvailable} initialEmail={verificationEmail.current}
+            <div><AttendeeLogin auth={auth} otpAvailable={config.otpAvailable} initialEmail={verificationEmail.current || pendingSubmission?.email || user?.email || ''}
                 submitted={Boolean(pendingSubmission?.id)} pendingId={pendingSubmission?.id}
                 completeLink={needsEmail ? finishEmail : null}
                 onRestart={() => { clearCallback(); setEmailRedirect(false); setNeedsEmail(false); setShowVerification(true); setError(''); }} error={error}/>

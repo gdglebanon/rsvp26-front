@@ -13,3 +13,8 @@ test('normal, VIP, invitation and unrelated auth visits open immediately', () =>
         assert.equal(isEmailVerificationRedirect(`https://rsvp.example/${suffix}`), false);
     }
 });
+
+test('email verification actions wait for Firebase validation', () => {
+    assert.equal(isEmailVerificationRedirect('https://rsvp.example/?mode=verifyEmail&oobCode=code'), true);
+    assert.equal(isEmailVerificationRedirect('https://rsvp.example/?mode=verifyEmail'), false);
+});

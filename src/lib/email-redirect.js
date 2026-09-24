@@ -3,5 +3,5 @@
 export function isEmailVerificationRedirect(href) {
     const params = new URL(href).searchParams;
     return params.get('auth') === 'callback'
-        || (params.get('mode') === 'signIn' && Boolean(params.get('oobCode')));
+        || (['signIn', 'verifyEmail'].includes(params.get('mode')) && Boolean(params.get('oobCode')));
 }
