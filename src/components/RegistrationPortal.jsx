@@ -1,7 +1,8 @@
-import { isEmailVerificationRedirect } from '../lib/email-redirect';
+import { sendVerificationEmail } from '../lib/email-verification';
+import { isEmailVerificationRedirect, verificationPendingId } from '../lib/email-redirect';
 import { authErrorMessage } from '../lib/auth-errors';
 import { useEffect, useRef, useState } from 'react';
-import { isSignInWithEmailLink, applyActionCode, reload, onIdTokenChanged, signInWithEmailLink, signOut } from 'firebase/auth';
+import { isSignInWithEmailLink, reload, onIdTokenChanged, signInWithEmailLink, signInWithCustomToken, signOut } from 'firebase/auth';
 import App from '../App';
 import { configureAuth } from '../lib/firebase';
 import { request, checkedEmail, normalizeEmail } from '../lib/registration';
@@ -61,6 +62,7 @@ export default function RegistrationPortal() {
     const [config, setConfig] = useState(null), [auth, setAuth] = useState(null), [user, setUser] = useState(null);
     const [session, setSession] = useState(null), [error, setError] = useState(''), [loading, setLoading] = useState(true);
     const [needsEmail, setNeedsEmail] = useState(false);
+    const [verificationSent, setVerificationSent] = useState(false);
     const [emailRedirect, setEmailRedirect] = useState(() => isEmailVerificationRedirect(window.location.href));
     const [formGeneration, setFormGeneration] = useState(0);
     const [connectionAttempt, setConnectionAttempt] = useState(0);
@@ -96,6 +98,7 @@ export default function RegistrationPortal() {
         linkCompleting.current = true;
         setLoading(true); setNeedsEmail(false);
         try {
+            verificationEmail.current = checkedEmail(email);
             await signInWithEmailLink(targetAuth, email, window.location.href);
             localStorage.removeItem('rsvpSignInEmail');
             clearCallback(); setNeedsEmail(false);
@@ -105,9 +108,9 @@ export default function RegistrationPortal() {
         } finally { linkCompleting.current = false; }
     }
     useEffect(() => {
-        let active = true, unsubscribe;
+        let active = true, unsubscribe, verificationFailed = false;
         setLoading(true); setError('');
-        const pendingId = new URLSearchParams(window.location.search).get('pending');
+        const pendingId = verificationPendingId(window.location.href);
         if (pendingId && /^[a-f0-9]{64}$/.test(pendingId)) {
             pendingRef.current = { id: pendingId };
             setPendingSubmission({ id: pendingId });
@@ -128,10 +131,14 @@ export default function RegistrationPortal() {
             const actionParams = new URLSearchParams(window.location.search);
             if (actionParams.get('mode') === 'verifyEmail' && actionParams.get('oobCode')) {
                 try {
-                    await applyActionCode(firebaseAuth, actionParams.get('oobCode'));
+                    const verified = await request('auth/email/complete', { method: 'POST', body: { code: actionParams.get('oobCode') } });
+                    if (!active) return;
+                    verificationEmail.current = checkedEmail(verified.email);
+                    await signInWithCustomToken(firebaseAuth, verified.customToken);
                     clearCallback();
                 } catch (e) {
-                    setError(authErrorMessage(e));
+                    verificationFailed = true;
+                    setShowVerification(true); setError(authErrorMessage(e));
                 }
             }
             if (emailRedirect && !isSignInWithEmailLink(firebaseAuth, window.location.href)) {
@@ -152,6 +159,7 @@ export default function RegistrationPortal() {
             if (!active) return;
             unsubscribe = onIdTokenChanged(firebaseAuth, async current => {
                 if (!active) return;
+                if (verificationFailed) { verificationFailed = false; setLoading(false); return; }
                 // A pre-existing session must not bypass an unfinished email link.
                 if (isSignInWithEmailLink(firebaseAuth, window.location.href) && !linkCompleting.current) {
                     setLoading(false);
@@ -194,7 +202,14 @@ export default function RegistrationPortal() {
         } });
         const record = savePendingSubmission(receipt, email, key);
         pendingRef.current = record; setPendingSubmission(record);
-        prepareAuthentication(form); setShowVerification(true);
+        prepareAuthentication(form); setVerificationSent(false);
+        try {
+            await sendVerificationEmail(email, record.id);
+            setVerificationSent(true);
+        } catch (e) {
+            setError(`Your submission is saved, but the verification email could not be sent. ${authErrorMessage(e)}`);
+        }
+        setShowVerification(true);
     }
     async function saved() {
         clearDraft(); clearPendingSubmission(); pendingRef.current = null; setPendingSubmission(null); setDraft(null); verificationEmail.current = '';
@@ -219,9 +234,9 @@ export default function RegistrationPortal() {
                 onBeforeAuthenticate={() => prepareAuthentication(form)}/> }/>}
         {auth && (showVerification || needsEmail) && <div className="verification-overlay" role="dialog" aria-modal="true" aria-label="Verify your email">
             <div><AttendeeLogin auth={auth} otpAvailable={config.otpAvailable} initialEmail={verificationEmail.current || pendingSubmission?.email || user?.email || ''}
-                submitted={Boolean(pendingSubmission?.id)} pendingId={pendingSubmission?.id}
-                completeLink={needsEmail ? finishEmail : null}
-                onRestart={() => { clearCallback(); setEmailRedirect(false); setNeedsEmail(false); setShowVerification(true); setError(''); }} error={error}/>
+                submitted={Boolean(pendingSubmission?.id)} verificationSent={verificationSent} pendingId={pendingSubmission?.id}
+                completeLink={needsEmail ? finishEmail : null} onBeforeAuthenticate={() => setError('')}
+                onRestart={() => { clearCallback(); setEmailRedirect(false); setNeedsEmail(false); setShowVerification(true); setError(''); setConnectionAttempt(value => value + 1); }} error={error}/>
                 <button className="verification-back" onClick={() => { clearCallback(); setEmailRedirect(false); setNeedsEmail(false); setShowVerification(false); setError(''); }}>Continue filling the form</button>
                 <p className="verification-note">{pendingSubmission?.id ? 'Your registration is saved with an unverified email. Verification will complete it automatically.' : 'Your saved details will load after you verify your email.'}</p>
             </div>
