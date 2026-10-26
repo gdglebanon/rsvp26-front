@@ -12,7 +12,8 @@ export const EVENT_CONFIG = {
     eventDescription: "A day of ideas, hands-on learning, and new connections. Join GDG Lebanon to explore technology and meet the people building what’s next."
 };
 
-export const isRegistrationOpen = () => {
-    if (EVENT_CONFIG.forceCloseRegistration) return false;
-    return new Date() <= EVENT_CONFIG.registrationDeadline;
+export const isRegistrationOpen = (now = new Date(), config = {}) => {
+    if (EVENT_CONFIG.forceCloseRegistration || config.forceCloseRegistration) return false;
+    const deadline = new Date(config.registrationDeadline ?? EVENT_CONFIG.registrationDeadline);
+    return now <= deadline;
 };

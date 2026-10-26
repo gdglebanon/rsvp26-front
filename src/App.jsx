@@ -1,3 +1,6 @@
+import RegistrationClosed from './components/RegistrationClosed';
+import { applyAccessCode } from './lib/access-codes';
+import { saveDraft } from './lib/draft';
 import { mergeLoadedForm } from './lib/form-hydration';
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
@@ -15,7 +18,7 @@ import {
     AlertTriangle
 } from 'lucide-react'
 import DevFestLogo from './components/DevFestLogo'
-import { EVENT_CONFIG } from './config'
+import { EVENT_CONFIG, isRegistrationOpen } from './config'
 import { FormField } from './components/FormField'
 import { SearchableSelect } from './components/SearchableSelect'
 import './App.css'
@@ -260,7 +263,7 @@ const DEVFEST_ATTENDANCE_OPTIONS = [
 ]
 
 const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderEmailSignIn, pendingEmail, initialDraft, submissionReady = true }) => {
-    const [isOpen, setIsOpen] = useState(true)
+    const [isOpen, setIsOpen] = useState(() => isRegistrationOpen(new Date(), eventConfig) || Boolean(attendee.ticket))
     const [isVip, setIsVip] = useState(false)
 
     useEffect(() => {
@@ -268,7 +271,8 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
         setIsVip(params.has('vip') && !attendee.ticket);
     }, [attendee.ticket]);
 
-    const [formData, setFormData] = useState({
+    const [formData, setFormData] = useState(() => ({
+        NewID: crypto.randomUUID(),
         secretCode: '',
         email: user?.email || initialDraft?.email || '',
         firstName: '',
@@ -303,7 +307,7 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
         ...attendee.profile,
         ...attendee.ticket?.answers,
         ...(user ? { email: user.email } : {})
-    })
+    }))
 
     // Apply background account data without discarding fields edited while it loaded.
     const loadedForm = useRef(formData);
@@ -363,8 +367,11 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
     }, [])
 
     useEffect(() => {
-        setIsOpen(eventConfig.registrationOpen || Boolean(attendee.ticket));
-    }, [eventConfig.registrationOpen, attendee.ticket])
+        const refreshAvailability = () => setIsOpen(isRegistrationOpen(new Date(), eventConfig) || Boolean(attendee.ticket));
+        refreshAvailability();
+        const timer = setInterval(refreshAvailability, 1000);
+        return () => clearInterval(timer);
+    }, [eventConfig, attendee.ticket])
 
     useEffect(() => {
         const selectedUniv = UNIVERSITIES.find(u => u.abbreviation === formData.university);
@@ -415,6 +422,7 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
     const validate = () => {
         const newErrors = {};
         if (isVip && !formData.secretCode) newErrors.secretCode = 'Secret code is required';
+        if (applyAccessCode(formData.comments, formData.secretCode).length > 5000) newErrors.comments = 'Keep comments under 5,000 characters, including the code marker.';
         if (!formData.email || !/^\S+@\S+\.\S+$/.test(formData.email)) newErrors.email = 'Valid email is required';
         if (!formData.firstName) newErrors.firstName = 'First name is required';
         if (!formData.lastName) newErrors.lastName = 'Last name is required';
@@ -465,9 +473,11 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
         setSubmitError('');
         if (loginRequired || !submissionReady) return;
         if (validate()) {
+            const codedForm = { ...formData, comments: applyAccessCode(formData.comments, formData.secretCode) };
+            saveDraft(codedForm);
             if (!user?.emailVerified) {
                 setIsSubmitting(true);
-                try { await onUnverifiedSubmit(formData); }
+                try { await onUnverifiedSubmit(codedForm); }
                 catch (error) {
                     setSubmitError(error.message);
                     if (error.status === 409 && error.message === 'Login is necessary to continue your registration.') setLoginEmail(formData.email.trim().toLowerCase());
@@ -483,7 +493,7 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
             } else if (formData.referral === 'Other' && formData.referralOtherText) {
                 referralValue = `Other: ${formData.referralOtherText}`;
             }
-            const submitData = { ...formData, referral: referralValue };
+            const submitData = { ...codedForm, referral: referralValue };
             try {
                 await saveRegistration(user, submitData, attendee.ticket);
                 await onSaved();
@@ -496,7 +506,9 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
 
     const handleChange = (e) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        setFormData(prev => ({ ...prev, [name]: value,
+            ...(name === 'secretCode' ? { comments: applyAccessCode(prev.comments, value, prev.secretCode) } : {}),
+        }));
         // Clear error for this field while typing
         if (errors[name]) {
             setErrors(prev => ({ ...prev, [name]: null }));
@@ -622,20 +634,7 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
 
     const isProfessionalOrFreshGrad = formData.status === 'professional' || formData.status === 'fresh_graduate';
 
-    if (!isOpen) {
-        return (
-            <div className="app-container closed-container">
-                <div className="logo-container">
-                    <DevFestLogo />
-                </div>
-                <div className="closed-message">
-                    <AlertTriangle size={48} className="warning-icon" />
-                    <h1>Registration Closed</h1>
-                    <p>Thank you for your interest! Registration for {EVENT_CONFIG.eventName} is now closed.</p>
-                </div>
-            </div>
-        )
-    }
+    if (!isOpen) return <RegistrationClosed />;
 
     if (isSuccess) {
         return (
@@ -679,10 +678,10 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
                 </section> : <form onSubmit={handleSubmit} className="single-page-form" noValidate>
                     {submitError && <p role="alert" className="login-panel login-error">{submitError}</p>}
 
-                    {isVip && (
+                    {
                         <section className="form-section">
                             <h2>Access & Security</h2>
-                            <FormField label="Secret Code" required error={errors.secretCode}>
+                            <FormField label="Secret Code" required={isVip} error={errors.secretCode}>
                                 <input
                                     type="text"
                                     name="secretCode"
@@ -692,7 +691,7 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
                                 />
                             </FormField>
                         </section>
-                    )}
+                    }
 
                     <section className="form-section">
                         <h2>Personal Information</h2>
@@ -1164,7 +1163,7 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
                                     <div className="card-top">
                                         <Users className="icon-yellow" />
                                         <div className="card-text">
-                                            <strong>Networking Focused (Visitor)</strong>
+                                            <strong>Visitor Experience</strong>
                                             <span>Focus on making connections in the lobby and expo.</span>
                                         </div>
                                     </div>
@@ -1198,7 +1197,7 @@ const App = ({ user, attendee, eventConfig, onSaved, onUnverifiedSubmit, renderE
                             <p>Important Note: Meals are guaranteed only for Full Day Experience attendees. Opting for a shorter, more targeted visit helps us accommodate more attendees and might increase your chances of being selected! As we try to have diverse attendees.</p>
                         </div>
 
-                        <FormField label="Additional Comments / 5min demo proposal (Optional)">
+                        <FormField label="Additional Comments / 5min demo proposal (Optional)" error={errors.comments}>
                             <textarea
                                 name="comments"
                                 rows="3"
